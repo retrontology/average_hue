@@ -1,6 +1,6 @@
 use std::fs::File;
 use std::io::prelude::*;
-use hueclient::Bridge;
+use hueclient::{Bridge, CommandLight};
 use text_io::read;
 use std::path::Path;
 use uuid::Uuid;
@@ -10,6 +10,10 @@ const UUIDFILENAME: &str = "bridge.uuid";
 fn main() {
     let bridge = get_bridge(Path::new(UUIDFILENAME)); 
     println!("the username was {}", bridge.username);
+    let light_command = CommandLight::default().on();
+    for light in &bridge.get_all_lights().unwrap() {
+        bridge.set_light_state(light.id, &light_command).unwrap();
+    }
 }
 
 fn get_bridge(uuid_path: &Path) -> Bridge{
@@ -35,7 +39,7 @@ fn get_bridge(uuid_path: &Path) -> Bridge{
         println!("Found hue bridge at {}. Press Hue Bridge button first, then press Enter.", bridge.ip);
         let _confirm: String = read!("{}\n");
         let outbridge = bridge.register_user(&username).unwrap();
-        match file.write_all(username.as_bytes()) {
+        match file.write_all(outbridge.username.as_bytes()) {
             Err(why) => panic!("couldn't write to {}: {}", display, why),
             Ok(_) => println!("successfully wrote to {}", display),
         }
