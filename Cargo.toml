@@ -10,4 +10,6 @@ text_io = "0.1.10"
 hueclient = "0.4.1"
 image = "0.24.1"
 kmeans_colors = "0.5.0"
+palette = "0.6.0"
 uuid = { version = "0.8.2", features = ["v4"] }
+rand = "0.8.5"

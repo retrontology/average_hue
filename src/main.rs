@@ -1,17 +1,24 @@
 use std::fs::File;
-use std::error::Error;
 use std::io::prelude::*;
 use std::{thread, time};
 use hueclient::{Bridge, CommandLight, IdentifiedLight, IdentifiedGroup};
 use text_io::read;
 use std::path::Path;
 use uuid::Uuid;
+use palette::{FromColor, IntoColor, Lab, Pixel, Srgb};
+use kmeans_colors::{get_kmeans, Calculate, Kmeans, MapColor, Sort};
+use rand::Rng;
 
 const UUIDFILENAME: &str = "bridge.uuid";
 const PERIOD: u16 = 3;
 const COLOUR: u16 = 25500;
 const OFF: bool = false;
 const GROUP_NAME: &str = "Bedroom";
+const IMG_PATH: &str = "test.jpg";
+const RUNS: u8 = 10;
+const MAX_ITER: usize = 100;
+const CONVERGE: f32 = 100.0;
+const KMEANS_VERBOSE: bool = true;
 
 fn main() {
     let bridge: Bridge = get_bridge(Path::new(UUIDFILENAME));
@@ -24,9 +31,36 @@ fn main() {
         }
     } else {
         let group: IdentifiedGroup = get_group(&bridge, &GROUP_NAME).unwrap();
-        println!("{}", group.id)
+        let lights: Vec<String> = group.group.lights;
+        let light_count: usize = lights.len();
+        let img = image::open(&Path::new(IMG_PATH)).unwrap();
+        let lab: Vec<Lab> = Srgb::from_raw_slice(&img.into_rgb8())
+            .iter()
+            .map(|x| x.into_format().into_color())
+            .collect();
+        let mut result = Kmeans::new();
+        let seed: u64 = 0;
+        for i in 0..RUNS {
+            let run_result = get_kmeans(
+                light_count,
+                MAX_ITER,
+                CONVERGE,
+                KMEANS_VERBOSE,
+                &lab,
+                seed + i as u64,
+            );
+            if run_result.score < result.score {
+                result = run_result;
+            }
+        }
+        let mut res = Lab::sort_indexed_colors(&result.centroids, &result.indices);
+        res.sort_unstable_by(|a, b| (b.percentage).partial_cmp(&a.percentage).unwrap());
+        println!("{}", res[0]);
     }
-    
+}
+
+fn to_command_light() {
+
 }
 
 fn get_group(bridge: &Bridge, group_name: &str) -> Result<IdentifiedGroup, &'static str> {
