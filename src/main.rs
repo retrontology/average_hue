@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 const UUIDFILENAME: &str = "bridge.uuid";
 const PERIOD: u16 = 3;
-const COLOUR: u16 = 25500;
+const COLOR: u16 = 25500;
 const OFF: bool = false;
 const RUNS: u8 = 1;
 const MAX_ITER: usize = 10;
@@ -37,6 +37,19 @@ fn set_group_to_image(bridge: &Bridge, group_name: &str, img_path: &str) {
     let group: IdentifiedGroup = get_group(&bridge, &group_name).unwrap();
     let lights: Vec<String> = group.group.lights;
     let light_count: usize = lights.len();
+    let res = find_dominant_colors(img_path, light_count);
+    let color_count = res.len();
+    for i in 0..light_count {
+        let color_index = i % color_count;
+        let command = to_command_light(res[color_index].centroid, None);
+        let _result = bridge.set_light_state(lights[i].parse::<usize>().unwrap(), &command);
+    }
+}
+
+fn find_dominant_colors(
+    img_path: &str,
+    count: usize,
+) -> std::vec::Vec<kmeans_colors::CentroidData<palette::Lab>> {
     let img = image::open(&Path::new(img_path)).unwrap();
     let lab: Vec<Lab> = Srgb::from_raw_slice(&img.into_rgb8())
         .iter()
@@ -47,7 +60,7 @@ fn set_group_to_image(bridge: &Bridge, group_name: &str, img_path: &str) {
     let seed: u64 = rng.gen_range(0..u64::MAX);
     for i in 0..RUNS {
         let run_result = get_kmeans(
-            light_count,
+            count,
             MAX_ITER,
             CONVERGE,
             KMEANS_VERBOSE,
@@ -60,16 +73,11 @@ fn set_group_to_image(bridge: &Bridge, group_name: &str, img_path: &str) {
     }
     let mut res = Lab::sort_indexed_colors(&result.centroids, &result.indices);
     res.sort_unstable_by(|a, b| (b.percentage).partial_cmp(&a.percentage).unwrap());
-    let colour_count = res.len();
-    for i in 0..light_count {
-        let colour_index = i % colour_count;
-        let command = to_command_light(res[colour_index].centroid, None);
-        let _result = bridge.set_light_state(lights[i].parse::<usize>().unwrap(), &command);
-    }
+    return res;
 }
 
-fn to_command_light(colour: Lab, transition_time: Option<u16>) -> CommandLight {
-    let hsv: Hsv = Hsv::from_color(colour);
+fn to_command_light(color: Lab, transition_time: Option<u16>) -> CommandLight {
+    let hsv: Hsv = Hsv::from_color(color);
     let brightness: u8 = (hsv.value * 253.0) as u8 + 1;
     let hue: u16 = (hsv.hue.to_positive_degrees() * 65535.0 / 360.0) as u16;
     let saturation: u8 = (hsv.saturation * 254.0) as u8;
@@ -104,7 +112,7 @@ fn pulse(bridge: &Bridge) {
         let mut light_command = CommandLight {
             on: Some(true),
             bri: Some(254),
-            hue: Some(COLOUR),
+            hue: Some(COLOR),
             sat: Some(254),
             ct: None,
             xy: None,
@@ -119,7 +127,7 @@ fn pulse(bridge: &Bridge) {
         light_command = CommandLight {
             on: Some(true),
             bri: Some(0),
-            hue: Some(COLOUR),
+            hue: Some(COLOR),
             sat: Some(254),
             ct: None,
             xy: None,
