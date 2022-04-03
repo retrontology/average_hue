@@ -1,13 +1,13 @@
+use hueclient::{Bridge, CommandLight, IdentifiedGroup, IdentifiedLight};
+use kmeans_colors::{get_kmeans, Kmeans, Sort};
+use palette::{FromColor, Hsv, IntoColor, Lab, Pixel, Srgb};
+use rand::{thread_rng, Rng};
 use std::fs::File;
 use std::io::prelude::*;
-use std::{thread, time, env};
-use hueclient::{Bridge, CommandLight, IdentifiedLight, IdentifiedGroup};
-use text_io::read;
 use std::path::Path;
+use std::{env, thread, time};
+use text_io::read;
 use uuid::Uuid;
-use palette::{FromColor, IntoColor, Lab, Pixel, Srgb, Hsv};
-use kmeans_colors::{get_kmeans, Kmeans, Sort};
-use rand::{thread_rng, Rng};
 
 const UUIDFILENAME: &str = "bridge.uuid";
 const PERIOD: u16 = 3;
@@ -21,7 +21,7 @@ const KMEANS_VERBOSE: bool = true;
 fn main() {
     let args: Vec<String> = env::args().collect();
     let bridge: Bridge = get_bridge(Path::new(UUIDFILENAME));
-    println!("the username was {}", bridge.username); 
+    println!("the username was {}", bridge.username);
     if OFF {
         let lights: Vec<IdentifiedLight> = bridge.get_all_lights().unwrap();
         let light_command = CommandLight::default().off();
@@ -70,7 +70,7 @@ fn set_group_to_image(bridge: &Bridge, group_name: &str, img_path: &str) {
 
 fn to_command_light(colour: Lab, transition_time: Option<u16>) -> CommandLight {
     let hsv: Hsv = Hsv::from_color(colour);
-    let brightness: u8 = (hsv.value * 253.0 ) as u8 + 1;
+    let brightness: u8 = (hsv.value * 253.0) as u8 + 1;
     let hue: u16 = (hsv.hue.to_positive_degrees() * 65535.0 / 360.0) as u16;
     let saturation: u8 = (hsv.saturation * 254.0) as u8;
     println!("B:{}\tH:{}:\tS{}", brightness, hue, saturation);
@@ -96,10 +96,9 @@ fn get_group(bridge: &Bridge, group_name: &str) -> Result<IdentifiedGroup, &'sta
     return Err("Group not found!");
 }
 
-fn pulse(bridge: &Bridge)
-{
+fn pulse(bridge: &Bridge) {
     let lights = &bridge.get_all_lights().unwrap();
-    let wait_time: u16 = PERIOD/2;
+    let wait_time: u16 = PERIOD / 2;
     let transition_time: u16 = PERIOD / 2 * 10;
     loop {
         let mut light_command = CommandLight {
@@ -135,11 +134,11 @@ fn pulse(bridge: &Bridge)
     }
 }
 
-fn get_bridge(uuid_path: &Path) -> Bridge{
+fn get_bridge(uuid_path: &Path) -> Bridge {
     let mut username: String = String::new();
     let display = uuid_path.display();
     if Path::new(UUIDFILENAME).exists() {
-        let mut file = match File::open(&uuid_path){
+        let mut file = match File::open(&uuid_path) {
             Err(why) => panic!("couldn't open {}: {}", display, why),
             Ok(file) => file,
         };
@@ -147,7 +146,6 @@ fn get_bridge(uuid_path: &Path) -> Bridge{
             Err(why) => panic!("couldn't read {}: {}", display, why),
             Ok(_) => return Bridge::discover_required().with_user(username),
         };
-        
     } else {
         username = Uuid::new_v4().to_string();
         let mut file = match File::create(&uuid_path) {
@@ -155,7 +153,10 @@ fn get_bridge(uuid_path: &Path) -> Bridge{
             Ok(file) => file,
         };
         let bridge = Bridge::discover_required();
-        println!("Found hue bridge at {}. Press Hue Bridge button first, then press Enter.", bridge.ip);
+        println!(
+            "Found hue bridge at {}. Press Hue Bridge button first, then press Enter.",
+            bridge.ip
+        );
         let _confirm: String = read!("{}\n");
         let out_bridge = bridge.register_user(&username).unwrap();
         match file.write_all(out_bridge.username.as_bytes()) {
