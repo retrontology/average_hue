@@ -1,26 +1,25 @@
 use std::fs::File;
 use std::io::prelude::*;
-use std::{thread, time};
+use std::{thread, time, env};
 use hueclient::{Bridge, CommandLight, IdentifiedLight, IdentifiedGroup};
 use text_io::read;
 use std::path::Path;
 use uuid::Uuid;
-use palette::{FromColor, IntoColor, Lab, Pixel, Srgb};
-use kmeans_colors::{get_kmeans, Calculate, Kmeans, MapColor, Sort};
-use rand::Rng;
+use palette::{FromColor, IntoColor, Lab, Pixel, Srgb, Hsv};
+use kmeans_colors::{get_kmeans, Kmeans, Sort};
+use rand::{thread_rng, Rng};
 
 const UUIDFILENAME: &str = "bridge.uuid";
 const PERIOD: u16 = 3;
 const COLOUR: u16 = 25500;
 const OFF: bool = false;
-const GROUP_NAME: &str = "Bedroom";
-const IMG_PATH: &str = "test.jpg";
-const RUNS: u8 = 10;
-const MAX_ITER: usize = 100;
-const CONVERGE: f32 = 100.0;
+const RUNS: u8 = 1;
+const MAX_ITER: usize = 10;
+const CONVERGE: f32 = 1.0;
 const KMEANS_VERBOSE: bool = true;
 
 fn main() {
+    let args: Vec<String> = env::args().collect();
     let bridge: Bridge = get_bridge(Path::new(UUIDFILENAME));
     println!("the username was {}", bridge.username); 
     if OFF {
@@ -30,37 +29,62 @@ fn main() {
             bridge.set_light_state(light.id, &light_command).unwrap();
         }
     } else {
-        let group: IdentifiedGroup = get_group(&bridge, &GROUP_NAME).unwrap();
-        let lights: Vec<String> = group.group.lights;
-        let light_count: usize = lights.len();
-        let img = image::open(&Path::new(IMG_PATH)).unwrap();
-        let lab: Vec<Lab> = Srgb::from_raw_slice(&img.into_rgb8())
-            .iter()
-            .map(|x| x.into_format().into_color())
-            .collect();
-        let mut result = Kmeans::new();
-        let seed: u64 = 0;
-        for i in 0..RUNS {
-            let run_result = get_kmeans(
-                light_count,
-                MAX_ITER,
-                CONVERGE,
-                KMEANS_VERBOSE,
-                &lab,
-                seed + i as u64,
-            );
-            if run_result.score < result.score {
-                result = run_result;
-            }
-        }
-        let mut res = Lab::sort_indexed_colors(&result.centroids, &result.indices);
-        res.sort_unstable_by(|a, b| (b.percentage).partial_cmp(&a.percentage).unwrap());
-        println!("{}", res[0]);
+        set_group_to_image(&bridge, &args[1], &args[2]);
     }
 }
 
-fn to_command_light() {
+fn set_group_to_image(bridge: &Bridge, group_name: &str, img_path: &str) {
+    let group: IdentifiedGroup = get_group(&bridge, &group_name).unwrap();
+    let lights: Vec<String> = group.group.lights;
+    let light_count: usize = lights.len();
+    let img = image::open(&Path::new(img_path)).unwrap();
+    let lab: Vec<Lab> = Srgb::from_raw_slice(&img.into_rgb8())
+        .iter()
+        .map(|x| x.into_format().into_color())
+        .collect();
+    let mut result = Kmeans::new();
+    let mut rng = thread_rng();
+    let seed: u64 = rng.gen_range(0..u64::MAX);
+    for i in 0..RUNS {
+        let run_result = get_kmeans(
+            light_count,
+            MAX_ITER,
+            CONVERGE,
+            KMEANS_VERBOSE,
+            &lab,
+            seed + i as u64,
+        );
+        if run_result.score < result.score {
+            result = run_result;
+        }
+    }
+    let mut res = Lab::sort_indexed_colors(&result.centroids, &result.indices);
+    res.sort_unstable_by(|a, b| (b.percentage).partial_cmp(&a.percentage).unwrap());
+    let colour_count = res.len();
+    for i in 0..light_count {
+        let colour_index = i % colour_count;
+        let command = to_command_light(res[colour_index].centroid, None);
+        let _result = bridge.set_light_state(lights[i].parse::<usize>().unwrap(), &command);
+    }
+}
 
+fn to_command_light(colour: Lab, transition_time: Option<u16>) -> CommandLight {
+    let hsv: Hsv = Hsv::from_color(colour);
+    let brightness: u8 = (hsv.value * 253.0 ) as u8 + 1;
+    let hue: u16 = (hsv.hue.to_positive_degrees() * 65535.0 / 360.0) as u16;
+    let saturation: u8 = (hsv.saturation * 254.0) as u8;
+    println!("B:{}\tH:{}:\tS{}", brightness, hue, saturation);
+    return CommandLight {
+        on: Some(true),
+        bri: Some(brightness),
+        hue: Some(hue),
+        sat: Some(saturation),
+        ct: None,
+        xy: None,
+        transitiontime: Some(transition_time.unwrap_or(20)),
+        alert: None,
+        scene: None,
+    };
 }
 
 fn get_group(bridge: &Bridge, group_name: &str) -> Result<IdentifiedGroup, &'static str> {
